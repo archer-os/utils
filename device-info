@@ -1,0 +1,69 @@
+#!/bin/bash
+
+usage() {
+    test -n "$1" && echo "Error: $1." >&2
+
+    cat <<EOF >&2
+Usage: $0 option
+where
+   --wireless
+   --wifi         shows info about the wireless LAN device
+   --display      shows info about the display controller
+   --vga          shows info about the VGA compatible controller and 3D controller
+   --graphics     same as both --vga and --display
+   --cpu          shows the name of the CPU type
+   --vm           if running in VM, echoes the name of the VM (virtualbox, qemu, vmware)
+   --virtualbox   echoes "yes" is running in VirtualBox VM, otherwise "no"
+EOF
+}
+
+pci_info() {
+    local result
+    for str in "$@" ; do
+        result="$(lspci | grep "$str" | sed 's|^.*'"$str"'||')"
+        if [ -n "$result" ] ; then
+            echo "$result"
+        fi
+    done
+}
+
+cpu_info() {
+    grep -w "^vendor_id" /proc/cpuinfo | head -n 1 | awk '{print $3}'
+}
+
+in_virtualbox() {
+    test -n "$(lspci | grep "VirtualBox Graphics Adapter")" && echo yes || echo no
+}
+
+in_vm() {
+    case "$(lspci -vnn)" in
+        *" QEMU "*)   echo qemu ;;
+        *VirtualBox*) echo virtualbox ;;
+        *VMware*)     echo vmware ;;        # this should be the last here!
+    esac
+}
+
+main()
+{
+    test -n "$1" || { Usage "option missing" ; return 1 ; }
+
+    local arg
+
+    for arg in "$@"
+    do
+        case "$arg" in
+            --cpu)                 cpu_info ;;
+            --virtualbox)          in_virtualbox ;;
+            --vm)                  in_vm ;;
+            --wireless | --wifi)   pci_info " Network controller: " ;;
+            --display)             pci_info " Display controller: " ;;
+            --vga)                 pci_info " VGA compatible controller: " " 3D controller: " ;;
+            --graphics)            main --vga ; main --display ;;
+            *)                     Usage "Unsupported option '$arg'"
+                                   return 1
+                                   ;;
+        esac
+    done
+}
+
+main "$@"
